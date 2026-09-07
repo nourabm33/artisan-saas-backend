@@ -1,10 +1,7 @@
 import request from 'supertest';
 import { createApp } from '@/infrastructure/web/app';
 import { createLogger } from '@/infrastructure/logger';
-import {
-  InMemoryOrganizationRepository,
-  InMemoryUserRepository,
-} from '../helpers/inMemoryRepositories';
+import { createInMemoryRepositories } from '../helpers/inMemoryRepositories';
 
 const buildApp = (health = { database: true, redis: true }) =>
   createApp({
@@ -15,8 +12,7 @@ const buildApp = (health = { database: true, redis: true }) =>
       jwtRefreshExpiry: '7d',
     },
     logger: createLogger('error', 'test'),
-    userRepository: new InMemoryUserRepository(),
-    organizationRepository: new InMemoryOrganizationRepository(),
+    ...createInMemoryRepositories(),
     health: {
       database: async () => health.database,
       redis: async () => health.redis,

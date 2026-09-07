@@ -11,8 +11,23 @@ import { RegisterUseCase } from '../../application/use-cases/auth/RegisterUseCas
 import { LoginUseCase } from '../../application/use-cases/auth/LoginUseCase';
 import { RefreshTokenUseCase } from '../../application/use-cases/auth/RefreshTokenUseCase';
 import { GetCurrentUserUseCase } from '../../application/use-cases/auth/GetCurrentUserUseCase';
+import { IClientRepository } from '../../domain/repositories/IClientRepository';
+import { IServiceTemplateRepository } from '../../domain/repositories/IServiceTemplateRepository';
+import { IRequestRepository } from '../../domain/repositories/IRequestRepository';
+import { IQuoteRepository } from '../../domain/repositories/IQuoteRepository';
+import { QuoteCalculationService } from '../../application/services/QuoteCalculationService';
+import { SubmitRequestUseCase } from '../../application/use-cases/requests/SubmitRequestUseCase';
+import { ListRequestsUseCase } from '../../application/use-cases/requests/ListRequestsUseCase';
+import { GetRequestUseCase } from '../../application/use-cases/requests/GetRequestUseCase';
+import { UpdateQuoteStatusUseCase } from '../../application/use-cases/requests/UpdateQuoteStatusUseCase';
+import { ListServiceTemplatesUseCase } from '../../application/use-cases/service-templates/ListServiceTemplatesUseCase';
+import { CreateServiceTemplateUseCase } from '../../application/use-cases/service-templates/CreateServiceTemplateUseCase';
 import { AuthController } from './controllers/AuthController';
+import { RequestController } from './controllers/RequestController';
+import { ServiceTemplateController } from './controllers/ServiceTemplateController';
 import { createAuthRouter } from './routes/auth';
+import { createQuotesRouter, createRequestsRouter } from './routes/requests';
+import { createServiceTemplatesRouter } from './routes/serviceTemplates';
 import { createHealthRouter, HealthDependencies } from './routes/health';
 import { requestLogger } from './middleware/requestLogger';
 import { createErrorHandler, notFoundHandler } from './middleware/errorHandler';
@@ -22,11 +37,27 @@ export interface AppDependencies {
   logger: Logger;
   userRepository: IUserRepository;
   organizationRepository: IOrganizationRepository;
+  clientRepository: IClientRepository;
+  serviceTemplateRepository: IServiceTemplateRepository;
+  requestRepository: IRequestRepository;
+  quoteRepository: IQuoteRepository;
   health: HealthDependencies;
+  quoteCalculation?: QuoteCalculationService;
 }
 
 export const createApp = (deps: AppDependencies): Express => {
-  const { config, logger, userRepository, organizationRepository, health } = deps;
+  const {
+    config,
+    logger,
+    userRepository,
+    organizationRepository,
+    clientRepository,
+    serviceTemplateRepository,
+    requestRepository,
+    quoteRepository,
+    health,
+  } = deps;
+  const quoteCalculation = deps.quoteCalculation ?? new QuoteCalculationService();
 
   const authService = new AuthService(
     config.jwtSecret,
@@ -41,6 +72,28 @@ export const createApp = (deps: AppDependencies): Express => {
     new GetCurrentUserUseCase(userRepository)
   );
 
+  const requestController = new RequestController(
+    new SubmitRequestUseCase(
+      {
+        organizationRepository,
+        userRepository,
+        serviceTemplateRepository,
+        clientRepository,
+        requestRepository,
+        quoteRepository,
+      },
+      quoteCalculation
+    ),
+    new ListRequestsUseCase(requestRepository),
+    new GetRequestUseCase(requestRepository, clientRepository, quoteRepository),
+    new UpdateQuoteStatusUseCase(quoteRepository, requestRepository)
+  );
+
+  const serviceTemplateController = new ServiceTemplateController(
+    new ListServiceTemplatesUseCase(serviceTemplateRepository, organizationRepository),
+    new CreateServiceTemplateUseCase(serviceTemplateRepository, organizationRepository)
+  );
+
   const app = express();
 
   app.disable('x-powered-by');
@@ -53,6 +106,12 @@ export const createApp = (deps: AppDependencies): Express => {
 
   app.use('/api/v1/health', createHealthRouter(health));
   app.use('/api/v1/auth', createAuthRouter(authController, authService));
+  app.use('/api/v1/requests', createRequestsRouter(requestController, authService));
+  app.use('/api/v1/quotes', createQuotesRouter(requestController, authService));
+  app.use(
+    '/api/v1/service-templates',
+    createServiceTemplatesRouter(serviceTemplateController, authService)
+  );
 
   app.use(notFoundHandler);
   app.use(createErrorHandler(logger));
