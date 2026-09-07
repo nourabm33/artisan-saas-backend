@@ -3,6 +3,7 @@
 Production-ready Node.js + Express + TypeScript backend for Italian artisans (MVP: **Gommista** - tire services).
 
 Phase 1 & 2: project infrastructure, PostgreSQL schema, domain model, authentication (register / login / refresh / me).
+Phase 3: public request submission, clients, service templates, automatic quote generation and quote lifecycle.
 
 ## Architecture
 
@@ -77,6 +78,13 @@ Base URL: `http://localhost:3000/api/v1`
 | POST   | `/auth/login`    | -      | Returns access + refresh tokens                |
 | POST   | `/auth/refresh`  | -      | Exchange a refresh token for a new pair        |
 | GET    | `/auth/me`       | Bearer | Current user                                   |
+| GET    | `/service-templates/public/:orgId` | - | Active services an org offers (for the client form) |
+| GET    | `/service-templates`      | Bearer      | All services of the caller's org                |
+| POST   | `/service-templates`      | owner/admin | Create a service template                       |
+| POST   | `/requests/public/:orgId/submit` | - | Client submits a request; client upserted by phone, quote auto-generated |
+| GET    | `/requests?status=&limit=&offset=` | Bearer | Requests of the caller's org                 |
+| GET    | `/requests/:id`           | Bearer      | Request with client + quote                     |
+| PATCH  | `/quotes/:id/status`      | owner/admin | `draft -> sent -> accepted \| rejected`; accepted/rejected propagate to the request |
 
 Register:
 
@@ -94,6 +102,25 @@ curl -X POST http://localhost:3000/api/v1/auth/register \
     "passwordConfirm": "SecurePassword123!"
   }'
 ```
+
+Public submission (no auth):
+
+```bash
+curl -X POST http://localhost:3000/api/v1/requests/public/<orgId>/submit \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "serviceTemplateId": "<serviceTemplateId>",
+    "clientPhone": "+39 333 987 6543",
+    "clientName": "Luca Bianchi",
+    "clientEmail": "luca@example.com",
+    "formData": { "carBrand": "Fiat", "carModel": "500", "tireSize": "185/55/R15" },
+    "preferredTimeSlot": "morning"
+  }'
+# -> 201 { requestId, quoteId, status: "quoted", totalPrice: 91.5, quote: { subtotal: 75, taxAmount: 16.5, ... } }
+```
+
+Quote maths (`QuoteCalculationService`): `subtotal = basePrice + laborHours * 30€`, optional % discount,
+`IVA 22%` on the discounted amount, all rounded to cents.
 
 Errors follow a single shape:
 
@@ -126,5 +153,5 @@ value is rejected in production). `CORS_ORIGIN` accepts a comma-separated list o
 
 ## Next Phases
 
-- Phase 3: clients, service templates, requests, quotes, appointments
-- Phase 4: notifications, media (Cloudinary), reviews, Stripe billing
+- Phase 3b: WhatsApp send/receive, Cloudinary media, appointment creation on quote acceptance
+- Phase 4: dashboard, notifications, reviews, Stripe billing

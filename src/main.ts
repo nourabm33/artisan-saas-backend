@@ -4,8 +4,14 @@ import { createClient } from 'redis';
 import { loadConfig } from './config';
 import { createLogger } from './infrastructure/logger';
 import { createApp } from './infrastructure/web/app';
-import { UserRepository } from './infrastructure/persistence/repositories/UserRepository';
-import { OrganizationRepository } from './infrastructure/persistence/repositories/OrganizationRepository';
+import {
+  ClientRepository,
+  OrganizationRepository,
+  QuoteRepository,
+  RequestRepository,
+  ServiceTemplateRepository,
+  UserRepository,
+} from './infrastructure/persistence/repositories';
 
 dotenv.config();
 
@@ -37,6 +43,10 @@ const start = async (): Promise<void> => {
     logger,
     userRepository: new UserRepository(pool),
     organizationRepository: new OrganizationRepository(pool),
+    clientRepository: new ClientRepository(pool),
+    serviceTemplateRepository: new ServiceTemplateRepository(pool),
+    requestRepository: new RequestRepository(pool),
+    quoteRepository: new QuoteRepository(pool),
     health: {
       database: async () => (await pool.query('SELECT 1')).rowCount === 1,
       redis: async () => (await redis.ping()) === 'PONG',
