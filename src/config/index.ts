@@ -12,6 +12,21 @@ export interface AppConfig {
   jwtRefreshExpiry: string;
   logLevel: string;
   corsOrigin: string[] | '*';
+  twilio?: TwilioConfig;
+  cloudinary?: CloudinaryConfig;
+  uploadsDir: string;
+}
+
+export interface TwilioConfig {
+  accountSid: string;
+  authToken: string;
+  whatsappFrom: string;
+}
+
+export interface CloudinaryConfig {
+  cloudName: string;
+  apiKey: string;
+  apiSecret: string;
 }
 
 const schema = Joi.object({
@@ -36,7 +51,19 @@ const schema = Joi.object({
   JWT_REFRESH_TOKEN_EXPIRY: Joi.string().default('7d'),
   LOG_LEVEL: Joi.string().default('info'),
   CORS_ORIGIN: Joi.string().default('*'),
-}).unknown(true);
+  TWILIO_ACCOUNT_SID: Joi.string().allow(''),
+  TWILIO_AUTH_TOKEN: Joi.string().allow(''),
+  TWILIO_WHATSAPP_FROM: Joi.string()
+    .pattern(/^whatsapp:\+\d{6,15}$/)
+    .allow(''),
+  CLOUDINARY_CLOUD_NAME: Joi.string().allow(''),
+  CLOUDINARY_API_KEY: Joi.string().allow(''),
+  CLOUDINARY_API_SECRET: Joi.string().allow(''),
+  UPLOADS_DIR: Joi.string().default('uploads'),
+})
+  .unknown(true)
+  .and('TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_WHATSAPP_FROM')
+  .and('CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET');
 
 export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
   const { value, error } = schema.validate(env, { abortEarly: false, stripUnknown: true });
@@ -64,5 +91,20 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
     jwtRefreshExpiry: value.JWT_REFRESH_TOKEN_EXPIRY,
     logLevel: value.LOG_LEVEL,
     corsOrigin,
+    twilio: value.TWILIO_ACCOUNT_SID
+      ? {
+          accountSid: value.TWILIO_ACCOUNT_SID,
+          authToken: value.TWILIO_AUTH_TOKEN,
+          whatsappFrom: value.TWILIO_WHATSAPP_FROM,
+        }
+      : undefined,
+    cloudinary: value.CLOUDINARY_CLOUD_NAME
+      ? {
+          cloudName: value.CLOUDINARY_CLOUD_NAME,
+          apiKey: value.CLOUDINARY_API_KEY,
+          apiSecret: value.CLOUDINARY_API_SECRET,
+        }
+      : undefined,
+    uploadsDir: value.UPLOADS_DIR,
   };
 };

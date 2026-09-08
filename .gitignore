@@ -8,3 +8,4 @@ logs/
 .vscode/
 coverage/
 .jest/
+uploads/

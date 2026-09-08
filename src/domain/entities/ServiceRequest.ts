@@ -93,4 +93,8 @@ export class ServiceRequest {
   withQuote(quoteId: string): ServiceRequest {
     return new ServiceRequest({ ...this.withStatus('quoted'), quoteId });
   }
+
+  withAppointment(appointmentId: string): ServiceRequest {
+    return new ServiceRequest({ ...this, appointmentId, updatedAt: new Date() });
+  }
 }

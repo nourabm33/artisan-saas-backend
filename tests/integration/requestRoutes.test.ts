@@ -1,7 +1,11 @@
 import request from 'supertest';
 import { createApp } from '@/infrastructure/web/app';
 import { createLogger } from '@/infrastructure/logger';
-import { createInMemoryRepositories, InMemoryRepositories } from '../helpers/inMemoryRepositories';
+import {
+  createInMemoryRepositories,
+  InMemoryRepositories,
+  testConfig,
+} from '../helpers/inMemoryRepositories';
 
 const registerBody = {
   organizationName: 'Gommista Rossi',
@@ -24,12 +28,7 @@ describe('Requests, quotes and service templates routes', () => {
   beforeEach(async () => {
     repos = createInMemoryRepositories();
     app = createApp({
-      config: {
-        corsOrigin: '*',
-        jwtSecret: 'integration-test-secret',
-        jwtAccessExpiry: '15m',
-        jwtRefreshExpiry: '7d',
-      },
+      config: testConfig,
       logger: createLogger('error', 'test'),
       ...repos,
       health: { database: async () => true, redis: async () => true },

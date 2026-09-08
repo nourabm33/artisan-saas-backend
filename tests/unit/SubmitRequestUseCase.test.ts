@@ -1,6 +1,8 @@
 import { SubmitRequestUseCase } from '@/application/use-cases/requests/SubmitRequestUseCase';
 import { UpdateQuoteStatusUseCase } from '@/application/use-cases/requests/UpdateQuoteStatusUseCase';
 import { QuoteCalculationService } from '@/application/services/QuoteCalculationService';
+import { QuoteAcceptanceService } from '@/application/services/QuoteAcceptanceService';
+import { AppointmentSchedulingService } from '@/application/services/AppointmentSchedulingService';
 import { Organization } from '@/domain/entities/Organization';
 import { User } from '@/domain/entities/User';
 import { ServiceTemplate } from '@/domain/entities/ServiceTemplate';
@@ -134,7 +136,10 @@ describe('SubmitRequestUseCase', () => {
   describe('UpdateQuoteStatusUseCase', () => {
     it('propagates accepted/rejected to the request and enforces transitions', async () => {
       const { quoteId, requestId } = await useCase.execute(command());
-      const update = new UpdateQuoteStatusUseCase(repos.quoteRepository, repos.requestRepository);
+      const update = new UpdateQuoteStatusUseCase(
+        repos.quoteRepository,
+        new QuoteAcceptanceService(repos, new AppointmentSchedulingService())
+      );
 
       const sent = await update.execute(org.id, quoteId, 'sent');
       expect(sent.status).toBe('sent');

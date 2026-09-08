@@ -71,20 +71,42 @@ curl http://localhost:3000/api/v1/health
 
 Base URL: `http://localhost:3000/api/v1`
 
-| Method | Path             | Auth   | Description                                    |
-| ------ | ---------------- | ------ | ---------------------------------------------- |
-| GET    | `/health`        | -      | Liveness + DB/Redis status (`200` ok / `503`)  |
-| POST   | `/auth/register` | -      | Create organization + owner user, returns JWTs |
-| POST   | `/auth/login`    | -      | Returns access + refresh tokens                |
-| POST   | `/auth/refresh`  | -      | Exchange a refresh token for a new pair        |
-| GET    | `/auth/me`       | Bearer | Current user                                   |
-| GET    | `/service-templates/public/:orgId` | - | Active services an org offers (for the client form) |
-| GET    | `/service-templates`      | Bearer      | All services of the caller's org                |
-| POST   | `/service-templates`      | owner/admin | Create a service template                       |
-| POST   | `/requests/public/:orgId/submit` | - | Client submits a request; client upserted by phone, quote auto-generated |
-| GET    | `/requests?status=&limit=&offset=` | Bearer | Requests of the caller's org                 |
-| GET    | `/requests/:id`           | Bearer      | Request with client + quote                     |
-| PATCH  | `/quotes/:id/status`      | owner/admin | `draft -> sent -> accepted \| rejected`; accepted/rejected propagate to the request |
+| Method | Path                                          | Auth        | Description                                                                                                                           |
+| ------ | --------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/health`                                     | -           | Liveness + DB/Redis status (`200` ok / `503`)                                                                                         |
+| POST   | `/auth/register`                              | -           | Create organization + owner user, returns JWTs                                                                                        |
+| POST   | `/auth/login`                                 | -           | Returns access + refresh tokens                                                                                                       |
+| POST   | `/auth/refresh`                               | -           | Exchange a refresh token for a new pair                                                                                               |
+| GET    | `/auth/me`                                    | Bearer      | Current user                                                                                                                          |
+| GET    | `/service-templates/public/:orgId`            | -           | Active services an org offers (for the client form)                                                                                   |
+| GET    | `/service-templates`                          | Bearer      | All services of the caller's org                                                                                                      |
+| POST   | `/service-templates`                          | owner/admin | Create a service template                                                                                                             |
+| POST   | `/requests/public/:orgId/submit`              | -           | Client submits a request; client upserted by phone, quote auto-generated                                                              |
+| GET    | `/requests?status=&limit=&offset=`            | Bearer      | Requests of the caller's org                                                                                                          |
+| GET    | `/requests/:id`                               | Bearer      | Request with client + quote                                                                                                           |
+| GET    | `/quotes/:id`                                 | Bearer      | Quote detail                                                                                                                          |
+| PATCH  | `/quotes/:id`                                 | owner/admin | Edit draft (basePrice, laborHours, discount %, notes); totals recalculated                                                            |
+| PATCH  | `/quotes/:id/status`                          | owner/admin | `draft -> sent -> accepted \| rejected`; accepted/rejected propagate to the request                                                   |
+| POST   | `/quotes/:id/send`                            | owner/admin | Send the quote to the client on WhatsApp (`draft -> sent`)                                                                            |
+| POST   | `/whatsapp/webhook`                           | Twilio sig  | Inbound reply: `SI`/`OK`/`ACCETTO` accepts (creates appointment), `NO`/`RIFIUTO` rejects; answers TwiML                               |
+| GET    | `/appointments?status=&from=&to=&assignedTo=` | Bearer      | Appointments of the caller's org                                                                                                      |
+| GET    | `/appointments/:id`                           | Bearer      | Appointment detail                                                                                                                    |
+| PATCH  | `/appointments/:id/status`                    | Bearer      | `pending -> confirmed -> in_progress -> completed`, `cancelled` from any open state; `completed`/`cancelled` propagate to the request |
+| PATCH  | `/appointments/:id/schedule`                  | Bearer      | Reschedule (`scheduledStart`, `scheduledEnd`)                                                                                         |
+| POST   | `/requests/public/:orgId/:requestId/media`    | -           | Client uploads photos/videos/PDF (`files` multipart, max 5×10MB, 10 per request)                                                      |
+| POST   | `/requests/:id/media`                         | Bearer      | Artisan uploads media                                                                                                                 |
+| DELETE | `/requests/:id/media/:mediaId`                | Bearer      | Delete media (and the stored object)                                                                                                  |
+
+Appointments are scheduled in `Europe/Rome`: preferred date + slot (`mattina` 09:00, `pomeriggio` 15:00,
+`sera` 18:00), otherwise the next working day (Sundays skipped); duration = quote labor hours rounded up to
+30 minutes.
+
+External providers are optional and swapped behind ports (`IWhatsAppGateway`, `IMediaStorage`):
+
+- Twilio (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`) — without them messages are
+  logged to stdout and webhook signatures are not enforced (dev only).
+- Cloudinary (`CLOUDINARY_*`) — without them files are stored on local disk (`UPLOADS_DIR`) and served
+  from `/uploads`.
 
 Register:
 
@@ -125,7 +147,13 @@ Quote maths (`QuoteCalculationService`): `subtotal = basePrice + laborHours * 30
 Errors follow a single shape:
 
 ```json
-{ "error": { "code": "VALIDATION_ERROR", "message": "Validation failed", "details": { "email": ["..."] } } }
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Validation failed",
+    "details": { "email": ["..."] }
+  }
+}
 ```
 
 Codes: `VALIDATION_ERROR` 400, `INVALID_JSON` 400, `UNAUTHORIZED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404,
@@ -153,5 +181,4 @@ value is rejected in production). `CORS_ORIGIN` accepts a comma-separated list o
 
 ## Next Phases
 
-- Phase 3b: WhatsApp send/receive, Cloudinary media, appointment creation on quote acceptance
-- Phase 4: dashboard, notifications, reviews, Stripe billing
+- Artisan dashboard (Next.js, separate repo), notifications, reviews, Stripe billing

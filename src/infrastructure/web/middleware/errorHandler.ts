@@ -1,4 +1,5 @@
 import { ErrorRequestHandler, NextFunction, Request, Response } from 'express';
+import { MulterError } from 'multer';
 import { DomainError } from '../../../domain/errors/DomainError';
 import { ValidationError } from '../../../domain/errors/ValidationError';
 import { Logger } from '../../logger';
@@ -23,6 +24,14 @@ export const createErrorHandler =
           message: err.message,
           ...(err instanceof ValidationError ? { details: err.errors } : {}),
         },
+      });
+      return;
+    }
+
+    if (err instanceof MulterError) {
+      const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      res.status(status).json({
+        error: { code: 'UPLOAD_ERROR', message: err.message, details: { files: [err.code] } },
       });
       return;
     }

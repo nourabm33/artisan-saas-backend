@@ -1,16 +1,11 @@
 import request from 'supertest';
 import { createApp } from '@/infrastructure/web/app';
 import { createLogger } from '@/infrastructure/logger';
-import { createInMemoryRepositories } from '../helpers/inMemoryRepositories';
+import { createInMemoryRepositories, testConfig } from '../helpers/inMemoryRepositories';
 
 const buildApp = (health = { database: true, redis: true }) =>
   createApp({
-    config: {
-      corsOrigin: '*',
-      jwtSecret: 'integration-test-secret',
-      jwtAccessExpiry: '15m',
-      jwtRefreshExpiry: '7d',
-    },
+    config: testConfig,
     logger: createLogger('error', 'test'),
     ...createInMemoryRepositories(),
     health: {

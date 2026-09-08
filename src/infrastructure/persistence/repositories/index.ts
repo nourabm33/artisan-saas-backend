@@ -4,3 +4,6 @@ export { ClientRepository } from './ClientRepository';
 export { ServiceTemplateRepository } from './ServiceTemplateRepository';
 export { RequestRepository } from './RequestRepository';
 export { QuoteRepository } from './QuoteRepository';
+export { AppointmentRepository } from './AppointmentRepository';
+export { MediaRepository } from './MediaRepository';
+export { WhatsAppMessageRepository } from './WhatsAppMessageRepository';

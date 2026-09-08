@@ -7,3 +7,6 @@ export type {
 } from './IServiceTemplateRepository';
 export type { IRequestRepository, RequestFilters } from './IRequestRepository';
 export type { IQuoteRepository } from './IQuoteRepository';
+export type { IAppointmentRepository, AppointmentFilters } from './IAppointmentRepository';
+export type { IMediaRepository } from './IMediaRepository';
+export type { IWhatsAppMessageRepository } from './IWhatsAppMessageRepository';
