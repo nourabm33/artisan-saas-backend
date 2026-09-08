@@ -3,16 +3,18 @@ import { AuthService } from '../../../application/services/AuthService';
 import {
   listRequestsQuerySchema,
   submitRequestSchema,
-  updateQuoteStatusSchema,
   uuidParamSchema,
 } from '../../../application/dtos/RequestDtos';
+import { MediaController } from '../controllers/MediaController';
 import { RequestController } from '../controllers/RequestController';
-import { authenticate, requireRole } from '../middleware/authenticate';
+import { authenticate } from '../middleware/authenticate';
+import { uploadFiles } from '../middleware/upload';
 import { validateBody } from '../middleware/validate';
 import { validateQuery, validateUuidParam } from '../middleware/validateParams';
 
 export const createRequestsRouter = (
   controller: RequestController,
+  mediaController: MediaController,
   authService: AuthService
 ): Router => {
   const router = Router();
@@ -23,6 +25,14 @@ export const createRequestsRouter = (
     validateUuidParam('orgId', uuidParamSchema),
     validateBody(submitRequestSchema),
     controller.submit
+  );
+  // Public: client attaches photos right after submitting.
+  router.post(
+    '/public/:orgId/:requestId/media',
+    validateUuidParam('orgId', uuidParamSchema),
+    validateUuidParam('requestId', uuidParamSchema),
+    uploadFiles,
+    mediaController.uploadPublic
   );
 
   router.get(
@@ -37,23 +47,19 @@ export const createRequestsRouter = (
     validateUuidParam('id', uuidParamSchema),
     controller.get
   );
-
-  return router;
-};
-
-export const createQuotesRouter = (
-  controller: RequestController,
-  authService: AuthService
-): Router => {
-  const router = Router();
-
-  router.patch(
-    '/:id/status',
+  router.post(
+    '/:id/media',
     authenticate(authService),
-    requireRole('owner', 'admin'),
     validateUuidParam('id', uuidParamSchema),
-    validateBody(updateQuoteStatusSchema),
-    controller.updateQuoteStatus
+    uploadFiles,
+    mediaController.upload
+  );
+  router.delete(
+    '/:id/media/:mediaId',
+    authenticate(authService),
+    validateUuidParam('id', uuidParamSchema),
+    validateUuidParam('mediaId', uuidParamSchema),
+    mediaController.remove
   );
 
   return router;

@@ -1,8 +1,19 @@
+import { Appointment } from '../../domain/entities/Appointment';
 import { Client } from '../../domain/entities/Client';
+import { Media } from '../../domain/entities/Media';
 import { Quote } from '../../domain/entities/Quote';
 import { ServiceRequest } from '../../domain/entities/ServiceRequest';
 import { ServiceTemplate } from '../../domain/entities/ServiceTemplate';
-import { ClientDto, QuoteDto, RequestDto, ServiceTemplateDto } from '../dtos/RequestDtos';
+import { WhatsAppMessage } from '../../domain/entities/WhatsAppMessage';
+import {
+  AppointmentDto,
+  ClientDto,
+  MediaDto,
+  QuoteDto,
+  RequestDto,
+  ServiceTemplateDto,
+  WhatsAppMessageDto,
+} from '../dtos/RequestDtos';
 
 export const toClientDto = (client: Client): ClientDto => ({
   id: client.id,
@@ -52,4 +63,32 @@ export const toServiceTemplateDto = (template: ServiceTemplate): ServiceTemplate
   defaultLaborHours: template.defaultLaborHours,
   fields: template.fields,
   isActive: template.isActive,
+});
+
+export const toAppointmentDto = (appointment: Appointment): AppointmentDto => ({
+  id: appointment.id,
+  requestId: appointment.requestId,
+  orgId: appointment.orgId,
+  assignedTo: appointment.assignedTo,
+  scheduledStart: appointment.scheduledStart,
+  scheduledEnd: appointment.scheduledEnd,
+  status: appointment.status,
+  createdAt: appointment.createdAt,
+  updatedAt: appointment.updatedAt,
+});
+
+export const toMediaDto = (media: Media): MediaDto => ({
+  id: media.id,
+  requestId: media.requestId,
+  url: media.url,
+  type: media.type,
+  uploadedBy: media.uploadedBy,
+  createdAt: media.createdAt,
+});
+
+export const toWhatsAppMessageDto = (message: WhatsAppMessage): WhatsAppMessageDto => ({
+  id: message.id,
+  direction: message.direction,
+  body: message.body,
+  createdAt: message.createdAt,
 });

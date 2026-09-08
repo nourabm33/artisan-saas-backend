@@ -1,21 +1,15 @@
 import { Request, Response } from 'express';
-import {
-  ListRequestsQuery,
-  SubmitRequestBody,
-  UpdateQuoteStatusBody,
-} from '../../../application/dtos/RequestDtos';
+import { ListRequestsQuery, SubmitRequestBody } from '../../../application/dtos/RequestDtos';
 import { GetRequestUseCase } from '../../../application/use-cases/requests/GetRequestUseCase';
 import { ListRequestsUseCase } from '../../../application/use-cases/requests/ListRequestsUseCase';
 import { SubmitRequestUseCase } from '../../../application/use-cases/requests/SubmitRequestUseCase';
-import { UpdateQuoteStatusUseCase } from '../../../application/use-cases/requests/UpdateQuoteStatusUseCase';
 import { AuthenticatedRequest } from '../middleware/authenticate';
 
 export class RequestController {
   constructor(
     private readonly submitRequestUseCase: SubmitRequestUseCase,
     private readonly listRequestsUseCase: ListRequestsUseCase,
-    private readonly getRequestUseCase: GetRequestUseCase,
-    private readonly updateQuoteStatusUseCase: UpdateQuoteStatusUseCase
+    private readonly getRequestUseCase: GetRequestUseCase
   ) {}
 
   submit = async (req: Request, res: Response): Promise<void> => {
@@ -37,12 +31,5 @@ export class RequestController {
     const { auth } = req as AuthenticatedRequest;
     const request = await this.getRequestUseCase.execute(auth.orgId, req.params.id);
     res.status(200).json({ request });
-  };
-
-  updateQuoteStatus = async (req: Request, res: Response): Promise<void> => {
-    const { auth } = req as AuthenticatedRequest;
-    const { status } = req.body as UpdateQuoteStatusBody;
-    const quote = await this.updateQuoteStatusUseCase.execute(auth.orgId, req.params.id, status);
-    res.status(200).json({ quote });
   };
 }

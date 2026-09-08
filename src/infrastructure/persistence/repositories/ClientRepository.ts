@@ -34,6 +34,14 @@ export class ClientRepository implements IClientRepository {
     return result.rows[0] ? ClientRepository.toEntity(result.rows[0]) : null;
   }
 
+  async findAllByPhone(phone: Phone): Promise<Client[]> {
+    const result = await this.pool.query<ClientRow>(
+      'SELECT * FROM clients WHERE phone = $1 ORDER BY created_at DESC',
+      [phone.toE164()]
+    );
+    return result.rows.map(ClientRepository.toEntity);
+  }
+
   async findByOrgId(orgId: string): Promise<Client[]> {
     const result = await this.pool.query<ClientRow>(
       'SELECT * FROM clients WHERE org_id = $1 ORDER BY created_at DESC',

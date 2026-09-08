@@ -127,10 +127,17 @@ CREATE INDEX IF NOT EXISTS idx_appointments_assigned_to ON appointments(assigned
 CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
 CREATE INDEX IF NOT EXISTS idx_appointments_scheduled_start ON appointments(scheduled_start);
 
-ALTER TABLE requests
-  ADD CONSTRAINT fk_requests_quote FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE SET NULL;
-ALTER TABLE requests
-  ADD CONSTRAINT fk_requests_appointment FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_requests_quote') THEN
+    ALTER TABLE requests
+      ADD CONSTRAINT fk_requests_quote FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE SET NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_requests_appointment') THEN
+    ALTER TABLE requests
+      ADD CONSTRAINT fk_requests_appointment FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS media (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -143,6 +150,20 @@ CREATE TABLE IF NOT EXISTS media (
 );
 
 CREATE INDEX IF NOT EXISTS idx_media_request_id ON media(request_id);
+
+CREATE TABLE IF NOT EXISTS whatsapp_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  request_id UUID REFERENCES requests(id) ON DELETE SET NULL,
+  direction VARCHAR(10) NOT NULL,
+  body TEXT NOT NULL,
+  provider_message_id VARCHAR(100) UNIQUE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_request_id ON whatsapp_messages(request_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_client_id ON whatsapp_messages(client_id);
 
 CREATE TABLE IF NOT EXISTS reviews (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

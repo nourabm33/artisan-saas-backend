@@ -14,6 +14,17 @@ import {
 } from '@/domain/repositories/IServiceTemplateRepository';
 import { IRequestRepository, RequestFilters } from '@/domain/repositories/IRequestRepository';
 import { IQuoteRepository } from '@/domain/repositories/IQuoteRepository';
+import { Appointment } from '@/domain/entities/Appointment';
+import { Media } from '@/domain/entities/Media';
+import { WhatsAppMessage } from '@/domain/entities/WhatsAppMessage';
+import {
+  AppointmentFilters,
+  IAppointmentRepository,
+} from '@/domain/repositories/IAppointmentRepository';
+import { IMediaRepository } from '@/domain/repositories/IMediaRepository';
+import { IWhatsAppMessageRepository } from '@/domain/repositories/IWhatsAppMessageRepository';
+import { IWhatsAppGateway, WhatsAppSendResult } from '@/application/ports/IWhatsAppGateway';
+import { IMediaStorage, StoredFile, UploadFile } from '@/application/ports/IMediaStorage';
 import { ConflictError } from '@/domain/errors/ConflictError';
 
 export class InMemoryUserRepository implements IUserRepository {
@@ -87,6 +98,10 @@ export class InMemoryClientRepository implements IClientRepository {
       if (client.orgId === orgId && client.phone.equals(phone)) return client;
     }
     return null;
+  }
+
+  async findAllByPhone(phone: Phone): Promise<Client[]> {
+    return [...this.clients.values()].filter((c) => c.phone.equals(phone));
   }
 
   async findByOrgId(orgId: string): Promise<Client[]> {
@@ -213,6 +228,121 @@ export class InMemoryQuoteRepository implements IQuoteRepository {
   }
 }
 
+export class InMemoryAppointmentRepository implements IAppointmentRepository {
+  readonly appointments = new Map<string, Appointment>();
+
+  async findById(id: string): Promise<Appointment | null> {
+    return this.appointments.get(id) ?? null;
+  }
+
+  async findByRequestId(requestId: string): Promise<Appointment | null> {
+    const matches = [...this.appointments.values()]
+      .filter((a) => a.requestId === requestId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return matches[0] ?? null;
+  }
+
+  async findByOrgId(orgId: string, filters: AppointmentFilters = {}): Promise<Appointment[]> {
+    return [...this.appointments.values()]
+      .filter((a) => a.orgId === orgId)
+      .filter((a) => !filters.status || a.status === filters.status)
+      .filter((a) => !filters.assignedTo || a.assignedTo === filters.assignedTo)
+      .filter((a) => !filters.from || a.scheduledStart >= filters.from)
+      .filter((a) => !filters.to || a.scheduledStart < filters.to)
+      .sort((a, b) => a.scheduledStart.getTime() - b.scheduledStart.getTime())
+      .slice(filters.offset ?? 0, (filters.offset ?? 0) + (filters.limit ?? 50));
+  }
+
+  async save(appointment: Appointment): Promise<Appointment> {
+    this.appointments.set(appointment.id, appointment);
+    return appointment;
+  }
+
+  async update(appointment: Appointment): Promise<Appointment> {
+    this.appointments.set(appointment.id, appointment);
+    return appointment;
+  }
+
+  async delete(id: string): Promise<void> {
+    this.appointments.delete(id);
+  }
+}
+
+export class InMemoryMediaRepository implements IMediaRepository {
+  readonly media = new Map<string, Media>();
+
+  async findById(id: string): Promise<Media | null> {
+    return this.media.get(id) ?? null;
+  }
+
+  async findByRequestId(requestId: string): Promise<Media[]> {
+    return [...this.media.values()].filter((m) => m.requestId === requestId);
+  }
+
+  async countByRequestId(requestId: string): Promise<number> {
+    return (await this.findByRequestId(requestId)).length;
+  }
+
+  async save(media: Media): Promise<Media> {
+    this.media.set(media.id, media);
+    return media;
+  }
+
+  async delete(id: string): Promise<void> {
+    this.media.delete(id);
+  }
+}
+
+export class InMemoryWhatsAppMessageRepository implements IWhatsAppMessageRepository {
+  readonly messages: WhatsAppMessage[] = [];
+
+  async findByProviderMessageId(providerMessageId: string): Promise<WhatsAppMessage | null> {
+    return this.messages.find((m) => m.providerMessageId === providerMessageId) ?? null;
+  }
+
+  async findByRequestId(requestId: string): Promise<WhatsAppMessage[]> {
+    return this.messages.filter((m) => m.requestId === requestId);
+  }
+
+  async save(message: WhatsAppMessage): Promise<WhatsAppMessage> {
+    this.messages.push(message);
+    return message;
+  }
+}
+
+export class FakeWhatsAppGateway implements IWhatsAppGateway {
+  readonly sent: { to: string; body: string }[] = [];
+  failNext = false;
+  acceptWebhooks = true;
+
+  async send(to: Phone, body: string): Promise<WhatsAppSendResult> {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error('twilio down');
+    }
+    this.sent.push({ to: to.toE164(), body });
+    return { providerMessageId: `SM${this.sent.length}` };
+  }
+
+  verifyWebhook(): boolean {
+    return this.acceptWebhooks;
+  }
+}
+
+export class FakeMediaStorage implements IMediaStorage {
+  readonly files = new Map<string, UploadFile>();
+
+  async upload(file: UploadFile, folder: string): Promise<StoredFile> {
+    const storageId = `${folder}/${this.files.size + 1}`;
+    this.files.set(storageId, file);
+    return { url: `https://cdn.test/${storageId}`, storageId };
+  }
+
+  async delete(storageId: string): Promise<void> {
+    this.files.delete(storageId);
+  }
+}
+
 export interface InMemoryRepositories {
   userRepository: InMemoryUserRepository;
   organizationRepository: InMemoryOrganizationRepository;
@@ -220,6 +350,11 @@ export interface InMemoryRepositories {
   serviceTemplateRepository: InMemoryServiceTemplateRepository;
   requestRepository: InMemoryRequestRepository;
   quoteRepository: InMemoryQuoteRepository;
+  appointmentRepository: InMemoryAppointmentRepository;
+  mediaRepository: InMemoryMediaRepository;
+  whatsAppMessageRepository: InMemoryWhatsAppMessageRepository;
+  whatsAppGateway: FakeWhatsAppGateway;
+  mediaStorage: FakeMediaStorage;
 }
 
 export const createInMemoryRepositories = (): InMemoryRepositories => ({
@@ -229,4 +364,17 @@ export const createInMemoryRepositories = (): InMemoryRepositories => ({
   serviceTemplateRepository: new InMemoryServiceTemplateRepository(),
   requestRepository: new InMemoryRequestRepository(),
   quoteRepository: new InMemoryQuoteRepository(),
+  appointmentRepository: new InMemoryAppointmentRepository(),
+  mediaRepository: new InMemoryMediaRepository(),
+  whatsAppMessageRepository: new InMemoryWhatsAppMessageRepository(),
+  whatsAppGateway: new FakeWhatsAppGateway(),
+  mediaStorage: new FakeMediaStorage(),
 });
+
+export const testConfig = {
+  corsOrigin: '*' as const,
+  jwtSecret: 'integration-test-secret',
+  jwtAccessExpiry: '15m',
+  jwtRefreshExpiry: '7d',
+  appUrl: 'http://localhost:3000',
+};
