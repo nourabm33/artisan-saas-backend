@@ -4,6 +4,8 @@ Production-ready Node.js + Express + TypeScript backend for Italian artisans (MV
 
 Phase 1 & 2: project infrastructure, PostgreSQL schema, domain model, authentication (register / login / refresh / me).
 Phase 3: public request submission, clients, service templates, automatic quote generation and quote lifecycle.
+Phase 4: WhatsApp (Twilio) quote delivery + inbound accept/reject, media uploads (Cloudinary / local disk), appointments.
+Phase 5: production deployment & monitoring — see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Architecture
 
@@ -73,7 +75,9 @@ Base URL: `http://localhost:3000/api/v1`
 
 | Method | Path                                          | Auth        | Description                                                                                                                           |
 | ------ | --------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/health`                                     | -           | Liveness + DB/Redis status (`200` ok / `503`)                                                                                         |
+| GET    | `/health`, `/health/ready`                    | -           | Readiness: DB + Redis probed (`200` ok / `503` degraded), includes `version`                                                          |
+| GET    | `/health/live`                                | -           | Liveness: process only, never touches DB/Redis                                                                                        |
+| GET    | `/metrics` (no `/api/v1` prefix)              | Bearer\*    | Prometheus metrics (`METRICS_TOKEN` when set)                                                                                         |
 | POST   | `/auth/register`                              | -           | Create organization + owner user, returns JWTs                                                                                        |
 | POST   | `/auth/login`                                 | -           | Returns access + refresh tokens                                                                                                       |
 | POST   | `/auth/refresh`                               | -           | Exchange a refresh token for a new pair                                                                                               |
@@ -157,7 +161,12 @@ Errors follow a single shape:
 ```
 
 Codes: `VALIDATION_ERROR` 400, `INVALID_JSON` 400, `UNAUTHORIZED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404,
-`CONFLICT` 409, `INTERNAL_ERROR` 500.
+`CONFLICT` 409, `RATE_LIMITED` 429, `INTERNAL_ERROR` 500 (includes `requestId`).
+
+Every response carries `X-Request-Id` (echoed from the proxy if well-formed, otherwise generated) and it
+is attached to every log line and Sentry event. Rate limits are per IP per `RATE_LIMIT_WINDOW_MS`
+(default 1 min): `RATE_LIMIT_MAX` on the API, `RATE_LIMIT_AUTH_MAX` on `/auth/*`, `RATE_LIMIT_PUBLIC_MAX`
+on public submission + WhatsApp webhook; counters live in Redis so they are shared across replicas.
 
 ## Scripts
 
@@ -171,14 +180,24 @@ npm run typecheck
 npm run lint / lint:fix
 npm run format / format:check
 npm run migrate      # apply schema.sql to DATABASE_URL (idempotent)
+npm run migrate:prod # same, from the compiled build (used by the prod image)
 npm run seed         # demo organization + user + service templates
+./scripts/backup-db.sh  # pg_dump of the prod stack, see DEPLOYMENT.md
 ```
 
 ## Environment Variables
 
 See `.env.example`. `JWT_SECRET` must be at least 16 characters (32 in production, and the example
-value is rejected in production). `CORS_ORIGIN` accepts a comma-separated list or `*`.
+value is rejected in production). `CORS_ORIGIN` accepts a comma-separated list or `*` (`*` is rejected
+in production). Production values live in `.env.production` (template: `.env.production.example`).
 
-## Next Phases
+## Deployment
 
-- Artisan dashboard (Next.js, separate repo), notifications, reviews, Stripe billing
+`docker-compose.prod.yml` runs the hardened image (non-root, compiled JS, healthchecks, one-shot
+migration) with PostgreSQL and Redis. CI (`deploy/github-workflows/ci.yml` (copy to `.github/workflows/`)) lints, tests, builds and smoke-tests
+the image; `release.yml` publishes to GHCR on `main`/tags and can SSH-deploy. Full runbook, monitoring and
+backup/restore procedures: [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Related
+
+- Artisan dashboard: [artisan-saas-frontend](https://github.com/nourabm33/artisan-saas-frontend) (Next.js)

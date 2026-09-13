@@ -9,3 +9,5 @@ logs/
 coverage/
 .jest/
 uploads/
+backups/
+.env.production

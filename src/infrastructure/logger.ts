@@ -5,7 +5,8 @@ export type Logger = winston.Logger;
 export const createLogger = (level: string, nodeEnv: string): Logger => {
   const transports: winston.transport[] = [new winston.transports.Console()];
 
-  if (nodeEnv !== 'test') {
+  // Containers ship stdout to the log collector; local files only help in development.
+  if (nodeEnv === 'development') {
     transports.push(
       new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
       new winston.transports.File({ filename: 'logs/combined.log' })

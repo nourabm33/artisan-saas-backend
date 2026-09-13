@@ -59,13 +59,18 @@ import { createRequestsRouter } from './routes/requests';
 import { createServiceTemplatesRouter } from './routes/serviceTemplates';
 import { createHealthRouter, HealthDependencies } from './routes/health';
 import { requestLogger } from './middleware/requestLogger';
+import { requestId } from './middleware/requestId';
+import { createRateLimiters, RateLimitStoreFactory } from './middleware/rateLimit';
 import { createErrorHandler, notFoundHandler } from './middleware/errorHandler';
+import { IErrorReporter, NoopErrorReporter } from '../../application/ports/IErrorReporter';
+import { createMetrics } from '../observability/metrics';
 
 export interface AppDependencies {
   config: Pick<
     AppConfig,
     'corsOrigin' | 'jwtSecret' | 'jwtAccessExpiry' | 'jwtRefreshExpiry' | 'appUrl'
-  >;
+  > &
+    Partial<Pick<AppConfig, 'rateLimit' | 'metrics'>>;
   logger: Logger;
   userRepository: IUserRepository;
   organizationRepository: IOrganizationRepository;
@@ -83,7 +88,18 @@ export interface AppDependencies {
   health: HealthDependencies;
   quoteCalculation?: QuoteCalculationService;
   scheduling?: AppointmentSchedulingService;
+  /** Sentry in production; defaults to a no-op. */
+  errorReporter?: IErrorReporter;
+  /** Shared rate-limit store (Redis). Defaults to per-process memory store. */
+  rateLimitStore?: RateLimitStoreFactory;
 }
+
+const DEFAULT_RATE_LIMIT: AppConfig['rateLimit'] = {
+  windowMs: 60_000,
+  max: 300,
+  authMax: 20,
+  publicMax: 30,
+};
 
 export const createApp = (deps: AppDependencies): Express => {
   const {
@@ -200,35 +216,52 @@ export const createApp = (deps: AppDependencies): Express => {
     new CreateServiceTemplateUseCase(serviceTemplateRepository, organizationRepository)
   );
 
+  const errorReporter = deps.errorReporter ?? new NoopErrorReporter();
+  const limiters = createRateLimiters(config.rateLimit ?? DEFAULT_RATE_LIMIT, deps.rateLimitStore);
+  const metricsConfig = config.metrics ?? { enabled: true };
+  const metrics = metricsConfig.enabled ? createMetrics({ token: metricsConfig.token }) : undefined;
+
   const app = express();
 
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
+  app.use(requestId);
   app.use(helmet());
-  app.use(cors({ origin: config.corsOrigin === '*' ? true : config.corsOrigin }));
+  app.use(
+    cors({
+      origin: config.corsOrigin === '*' ? true : config.corsOrigin,
+      exposedHeaders: ['X-Request-Id', 'RateLimit', 'RateLimit-Policy'],
+    })
+  );
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true }));
   app.use(requestLogger(logger));
+  if (metrics) {
+    app.use(metrics.httpMiddleware);
+    app.use('/metrics', metrics.router);
+  }
   if (deps.uploadsDir) {
     app.use('/uploads', express.static(deps.uploadsDir, { fallthrough: false, index: false }));
   }
 
   app.use('/api/v1/health', createHealthRouter(health));
-  app.use('/api/v1/auth', createAuthRouter(authController, authService));
+  app.use('/api/v1', limiters.general);
+  app.use('/api/v1/auth', limiters.auth, createAuthRouter(authController, authService));
+  app.use('/api/v1/requests/public', limiters.public);
   app.use(
     '/api/v1/requests',
     createRequestsRouter(requestController, mediaController, authService)
   );
   app.use('/api/v1/quotes', createQuotesRouter(quoteController, authService));
   app.use('/api/v1/appointments', createAppointmentsRouter(appointmentController, authService));
-  app.use('/api/v1/whatsapp', createWhatsAppRouter(whatsAppWebhookController));
+  app.use('/api/v1/whatsapp', limiters.public, createWhatsAppRouter(whatsAppWebhookController));
   app.use(
     '/api/v1/service-templates',
     createServiceTemplatesRouter(serviceTemplateController, authService)
   );
 
   app.use(notFoundHandler);
-  app.use(createErrorHandler(logger));
+  app.use(createErrorHandler(logger, errorReporter));
 
   return app;
 };
