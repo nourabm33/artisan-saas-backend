@@ -1,0 +1,105 @@
+# Production stack for a single VPS. Usage:
+#   cp .env.production.example .env.production   # fill in secrets
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+#
+# Terminate TLS in front of `backend` (Caddy/Nginx/Traefik or your platform's LB)
+# and forward X-Forwarded-For / X-Request-Id; the app trusts one proxy hop.
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-artisan_saas}
+      POSTGRES_USER: ${POSTGRES_USER:-artisan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: &logging
+      driver: json-file
+      options: { max-size: '10m', max-file: '5' }
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--save', '60', '1', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+  # One-shot: applies schema.sql (idempotent) before the API starts.
+  migrate:
+    image: ${BACKEND_IMAGE:-ghcr.io/nourabm33/artisan-saas-backend:latest}
+    build:
+      context: .
+      target: production
+      args: { APP_RELEASE: '${APP_RELEASE:-dev}' }
+    command: ['node', 'dist/infrastructure/database/migrations/run.js']
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-artisan}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-artisan_saas}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: 'no'
+
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/nourabm33/artisan-saas-backend:latest}
+    build:
+      context: .
+      target: production
+      args: { APP_RELEASE: '${APP_RELEASE:-dev}' }
+    restart: unless-stopped
+    ports:
+      - '${BACKEND_PORT:-3000}:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      APP_URL: ${APP_URL:?APP_URL is required}
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN is required}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-artisan}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-artisan_saas}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_ACCESS_TOKEN_EXPIRY: ${JWT_ACCESS_TOKEN_EXPIRY:-15m}
+      JWT_REFRESH_TOKEN_EXPIRY: ${JWT_REFRESH_TOKEN_EXPIRY:-7d}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM:-}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      UPLOADS_DIR: /app/uploads
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
+      RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-20}
+      RATE_LIMIT_PUBLIC_MAX: ${RATE_LIMIT_PUBLIC_MAX:-30}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      APP_RELEASE: ${APP_RELEASE:-dev}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:3000/api/v1/health/ready']
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging: *logging
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:

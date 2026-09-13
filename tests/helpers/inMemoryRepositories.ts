@@ -377,4 +377,6 @@ export const testConfig = {
   jwtAccessExpiry: '15m',
   jwtRefreshExpiry: '7d',
   appUrl: 'http://localhost:3000',
+  rateLimit: { windowMs: 60_000, max: 10_000, authMax: 10_000, publicMax: 10_000 },
+  metrics: { enabled: false },
 };

@@ -3,6 +3,9 @@ import { MulterError } from 'multer';
 import { DomainError } from '../../../domain/errors/DomainError';
 import { ValidationError } from '../../../domain/errors/ValidationError';
 import { Logger } from '../../logger';
+import { IErrorReporter, NoopErrorReporter } from '../../../application/ports/IErrorReporter';
+import { getRequestId } from './requestId';
+import { AuthenticatedRequest } from './authenticate';
 
 interface HttpErrorLike {
   status?: number;
@@ -15,8 +18,9 @@ export const notFoundHandler = (_req: Request, res: Response): void => {
 };
 
 export const createErrorHandler =
-  (logger: Logger): ErrorRequestHandler =>
+  (logger: Logger, reporter: IErrorReporter = new NoopErrorReporter()): ErrorRequestHandler =>
   (err: unknown, req: Request, res: Response, _next: NextFunction): void => {
+    const requestId = getRequestId(req);
     if (err instanceof DomainError) {
       res.status(err.statusCode).json({
         error: {
@@ -46,13 +50,22 @@ export const createErrorHandler =
       return;
     }
 
+    const auth = (req as AuthenticatedRequest).auth;
     logger.error('Unhandled error', {
+      requestId,
       method: req.method,
       path: req.path,
       error: err instanceof Error ? { message: err.message, stack: err.stack } : err,
     });
+    reporter.captureException(err, {
+      requestId,
+      method: req.method,
+      path: req.originalUrl,
+      userId: auth?.userId,
+      orgId: auth?.orgId,
+    });
 
     res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'Internal Server Error' },
+      error: { code: 'INTERNAL_ERROR', message: 'Internal Server Error', requestId },
     });
   };

@@ -15,6 +15,27 @@ export interface AppConfig {
   twilio?: TwilioConfig;
   cloudinary?: CloudinaryConfig;
   uploadsDir: string;
+  rateLimit: RateLimitConfig;
+  metrics: MetricsConfig;
+  sentryDsn?: string;
+  release?: string;
+}
+
+export interface RateLimitConfig {
+  /** Sliding window length in ms. */
+  windowMs: number;
+  /** Max requests per IP per window on the general API. */
+  max: number;
+  /** Stricter cap for credential endpoints (login/register/refresh). */
+  authMax: number;
+  /** Cap for unauthenticated public endpoints (request submission, webhooks). */
+  publicMax: number;
+}
+
+export interface MetricsConfig {
+  enabled: boolean;
+  /** When set, GET /metrics requires `Authorization: Bearer <token>`. */
+  token?: string;
 }
 
 export interface TwilioConfig {
@@ -50,7 +71,9 @@ const schema = Joi.object({
   JWT_ACCESS_TOKEN_EXPIRY: Joi.string().default('15m'),
   JWT_REFRESH_TOKEN_EXPIRY: Joi.string().default('7d'),
   LOG_LEVEL: Joi.string().default('info'),
-  CORS_ORIGIN: Joi.string().default('*'),
+  CORS_ORIGIN: Joi.string()
+    .default('*')
+    .when('NODE_ENV', { is: 'production', then: Joi.string().invalid('*') }),
   TWILIO_ACCOUNT_SID: Joi.string().allow(''),
   TWILIO_AUTH_TOKEN: Joi.string().allow(''),
   TWILIO_WHATSAPP_FROM: Joi.string()
@@ -60,6 +83,14 @@ const schema = Joi.object({
   CLOUDINARY_API_KEY: Joi.string().allow(''),
   CLOUDINARY_API_SECRET: Joi.string().allow(''),
   UPLOADS_DIR: Joi.string().default('uploads'),
+  RATE_LIMIT_WINDOW_MS: Joi.number().integer().min(1000).default(60_000),
+  RATE_LIMIT_MAX: Joi.number().integer().min(1).default(300),
+  RATE_LIMIT_AUTH_MAX: Joi.number().integer().min(1).default(20),
+  RATE_LIMIT_PUBLIC_MAX: Joi.number().integer().min(1).default(30),
+  METRICS_ENABLED: Joi.boolean().default(true),
+  METRICS_TOKEN: Joi.string().allow(''),
+  SENTRY_DSN: Joi.string().uri().allow(''),
+  APP_RELEASE: Joi.string().allow(''),
 })
   .unknown(true)
   .and('TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_WHATSAPP_FROM')
@@ -106,5 +137,17 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
         }
       : undefined,
     uploadsDir: value.UPLOADS_DIR,
+    rateLimit: {
+      windowMs: value.RATE_LIMIT_WINDOW_MS,
+      max: value.RATE_LIMIT_MAX,
+      authMax: value.RATE_LIMIT_AUTH_MAX,
+      publicMax: value.RATE_LIMIT_PUBLIC_MAX,
+    },
+    metrics: {
+      enabled: value.METRICS_ENABLED,
+      token: value.METRICS_TOKEN || undefined,
+    },
+    sentryDsn: value.SENTRY_DSN || undefined,
+    release: value.APP_RELEASE || undefined,
   };
 };
